@@ -1,9 +1,10 @@
-import os, tempfile, asyncio
-from typing import Optional, List
+import os, tempfile, asyncio, shutil
+from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -24,12 +25,13 @@ app = FastAPI(title="Manga PDF → Kindle EPUB")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ALLOW_ORIGINS,
-    allow_methods=["GET","POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 # Estáticos (para dev; em produção o Nginx serve /)
-app.mount("/assets", StaticFiles(directory="src/static"), name="static")
+# Monte /assets a partir da pasta real de assets
+app.mount("/assets", StaticFiles(directory="src/static/assets"), name="static")
 
 @app.exception_handler(RateLimitExceeded)
 def ratelimit_handler(request: Request, exc: RateLimitExceeded):
@@ -68,10 +70,12 @@ async def convert(
     if cl and int(cl) > settings.MAX_PDF_MB * 1024 * 1024:
         raise HTTPException(status_code=413, detail=f"Arquivo acima de {settings.MAX_PDF_MB} MB.")
 
-    with tempfile.TemporaryDirectory() as td:
-        pdf_path = os.path.join(td, "input.pdf")
-        out_path = os.path.join(td, "output.epub")
+    # NÃO use TemporaryDirectory() aqui — ele remove antes do FileResponse ler.
+    td = tempfile.mkdtemp()
+    pdf_path = os.path.join(td, "input.pdf")
+    out_path = os.path.join(td, "output.epub")
 
+    try:
         # Grava em chunks
         size = 0
         with open(pdf_path, "wb") as f:
@@ -101,7 +105,7 @@ async def convert(
                 pdf_to_epub,
                 pdf_path, out_path,
                 title=title, author=author,
-                target_resolution=(max(1,int(width)), max(1,int(height))),
+                target_resolution=(max(1, int(width)), max(1, int(height))),
                 jpeg_quality=min(95, max(40, int(jpeg_quality))),
                 dpi=settings.RENDER_DPI,
                 right_to_left=bool(rtl),
@@ -113,5 +117,35 @@ async def convert(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Falha na conversão: {e}")
 
+        # Sanity-check: arquivo precisa existir e ter tamanho > 0
+        if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+            raise HTTPException(status_code=500, detail="Conversão não gerou arquivo de saída.")
+
         headers = {"Content-Disposition": f'attachment; filename="{os.path.splitext(file.filename)[0]}.epub"'}
-        return FileResponse(out_path, media_type="application/epub+zip", headers=headers)
+
+        # Limpeza em background (só depois que a resposta for enviada)
+        def _cleanup():
+            for p in (pdf_path, out_path):
+                try:
+                    os.remove(p)
+                except FileNotFoundError:
+                    pass
+            try:
+                shutil.rmtree(td)
+            except FileNotFoundError:
+                pass
+
+        return FileResponse(
+            out_path,
+            media_type="application/epub+zip",
+            headers=headers,
+            background=BackgroundTask(_cleanup),
+        )
+
+    except Exception:
+        # Se algo der errado, tente limpar
+        try:
+            shutil.rmtree(td)
+        except FileNotFoundError:
+            pass
+        raise
