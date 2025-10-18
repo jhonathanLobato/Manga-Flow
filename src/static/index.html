@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mangá PDF → Kindle EPUB</title>
+  <link rel="stylesheet" href="/assets/style.css"/>
+</head>
+<body>
+  <main class="container">
+    <h1>Mangá PDF → Kindle EPUB</h1>
+    <p class="subtitle">Upload público • Sem salvar seus arquivos • Conversão leve</p>
+
+    <form id="form" class="card">
+      <label>Arquivo PDF
+        <input type="file" name="file" accept="application/pdf" required />
+      </label>
+
+      <div class="row">
+        <label>Título
+          <input type="text" name="title" placeholder="Meu Mangá" />
+        </label>
+        <label>Autor
+          <input type="text" name="author" placeholder="Opcional" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Perfil (largura × altura)
+          <select id="profile">
+            <option value="1072x1448">Basic/PW3 — 1072×1448</option>
+            <option value="1264x1680" selected>Paperwhite/Oasis — 1264×1680</option>
+            <option value="1440x1920">Oasis 7" — 1440×1920</option>
+            <option value="1860x2480">Scribe — 1860×2480</option>
+          </select>
+        </label>
+        <label>Qualidade JPEG (40–95)
+          <input type="number" name="jpeg_quality" min="40" max="95" value="80"/>
+        </label>
+      </div>
+
+      <div class="row">
+        <label><input type="checkbox" name="rtl" checked/> Direção RTL (mangá)</label>
+        <label><input type="checkbox" name="autocrop" checked/> Autocrop bordas</label>
+        <label><input type="checkbox" name="split_double" checked/> Dividir páginas duplas</label>
+      </div>
+
+      <button id="submit" type="submit">Converter</button>
+
+      <div id="progressWrap" class="progress-wrap" hidden>
+        <div id="progressBar" class="progress-bar" style="width:0%"></div>
+      </div>
+
+      <p id="status" class="status"></p>
+    </form>
+
+    <footer>
+      <p>Limite: 200 MB / 1000 páginas. Envie o .epub via cabo ou “Send to Kindle”.</p>
+    </footer>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
